@@ -3,9 +3,10 @@
 #define TAILLE_CASE 10
 #define DUREE_TOUR_MS 250
 
-typedef struct {
+typedef struct Case {
 	int x;
 	int y;
+	struct Case *suiv;
 } Case;
 
 typedef enum {
@@ -16,7 +17,7 @@ typedef enum {
 } Direction;
 
 typedef struct {
-	Case		corps[N*M];
+	Case		*corps;
 	Direction	direction;
 	int		taille;
 } Serpent;

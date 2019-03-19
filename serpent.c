@@ -5,7 +5,8 @@
 
 #include "serpent.h"
 
-/* Amélioration #1 (*) : barre d'espace pour mettre en pause */
+/* Amélioration #1 (*)   : barre d'espace pour mettre en pause */
+/* Amélioration #9 (***) : liste chaînée de cases pour le serpent */
 
 Pomme pomme_gen_alea(int n, int m)
 {
@@ -29,7 +30,7 @@ int case_est_hors_plateau(Case destination)
 
 int case_appartient_serpent(Case destination, Serpent ser)
 {
-	int i;
+	Case *c;
 
 	/* La case destination est-elle dans le plateau */
 	if (case_est_hors_plateau(destination)) {
@@ -37,10 +38,12 @@ int case_appartient_serpent(Case destination, Serpent ser)
 	}
 
 	/* La case destination contient-elle un morceau du serpent ? */
-	for (i = 0; i < ser.taille; i++) {
-		if (destination.x == ser.corps[i].x && destination.y == ser.corps[i].y) {
+	c = ser.corps;
+	while (c != NULL) {
+		if (destination.x == c->x && destination.y == c->y) {
 			return 1;
 		}
+		c = c->suiv;
 	}
 
 	return 0;
@@ -115,17 +118,68 @@ void retirer_pomme_monde(Case c, Monde *mon)
 	mon->nb_pommes_monde--;
 }
 
+void ajouter_tete_serpent(int x, int y, Serpent *ser)
+{
+	Case *c;
+
+	c = malloc(sizeof(Case));
+	c->x = x;
+	c->y = y;
+	c->suiv = ser->corps;
+	ser->corps = c;
+}
+
+void ajouter_queue_serpent(int x, int y, Serpent *ser)
+{
+	Case *corps, *c;
+
+	c = malloc(sizeof(Case));
+	c->x = x;
+	c->y = y;
+	c->suiv = NULL;
+
+	corps = ser->corps;
+	while (corps->suiv != NULL) {
+		corps = corps->suiv;
+	}
+	corps->suiv = c;
+}
+
+void retirer_queue_serpent(Serpent *ser)
+{
+	Case *corps, *c;
+
+	corps = ser->corps;
+	if (corps == NULL) {
+		return;
+	}
+	if (corps->suiv == NULL) {
+		/* Le serpent n'a qu'une tête on ne fait rien */
+		return;
+	}
+	while (corps->suiv->suiv != NULL) {
+		corps = corps->suiv;
+	}
+	/* On est sur la queue du serpent */
+	free(corps->suiv);
+	corps->suiv = NULL;
+}
+
 Serpent init_serpent()
 {
 	Serpent ser;
+	Case *c;
 
 	/* Nouveau serpent de deux cases, au milieu, direction est */
 	ser.direction = EST;
 	ser.taille = 2;
-	ser.corps[0].x = N / 2;
-	ser.corps[0].y = M / 2;
-	ser.corps[1].x = ser.corps[0].x;
-	ser.corps[1].y = ser.corps[0].y - 1;
+	ser.corps = NULL;
+
+	/* Ajout de la tête */
+	ajouter_tete_serpent(N / 2, M / 2, &ser);
+
+	/* Corps */
+	ajouter_queue_serpent(N / 2, (M / 2) - 1, &ser);
 
 	/* On renvoie le serpent */
 	return ser;
@@ -160,23 +214,23 @@ Case destination_serpent(Serpent ser)
 	/* On vérifie la destination en fonction de la direction du serpent */
 	switch(ser.direction) {
 		case NORD:
-			destination.x = ser.corps[0].x - 1;
-			destination.y = ser.corps[0].y;
+			destination.x = ser.corps->x - 1;
+			destination.y = ser.corps->y;
 			break;
 
 		case EST:
-			destination.x = ser.corps[0].x;
-			destination.y = ser.corps[0].y + 1;
+			destination.x = ser.corps->x;
+			destination.y = ser.corps->y + 1;
 			break;
 
 		case SUD:
-			destination.x = ser.corps[0].x + 1;
-			destination.y = ser.corps[0].y;
+			destination.x = ser.corps->x + 1;
+			destination.y = ser.corps->y;
 			break;
 
 		case OUEST:
-			destination.x = ser.corps[0].x;
-			destination.y = ser.corps[0].y - 1;
+			destination.x = ser.corps->x;
+			destination.y = ser.corps->y - 1;
 			break;
 
 		default:
@@ -187,9 +241,9 @@ Case destination_serpent(Serpent ser)
 	return destination;
 }
 
-int deplacer_serpent(Monde *mon)
+int deplacer_serpent(Monde *mon, int retirer_queue)
 {
-	Case destination;
+	Case destination, c;
 	int i;
 
 	/* On récupère la case de destination du serpent */
@@ -200,12 +254,11 @@ int deplacer_serpent(Monde *mon)
 		return 0;
 	}
 
-	/* On déplace le serpent */
-	for (i = mon->serpent.taille - 1; i > 0; --i) {
-		mon->serpent.corps[i] = mon->serpent.corps[i-1];
+	/* On déplace le serpent : la destination devient la nouvelle tête et on retire la queue (si besoin) */
+	ajouter_tete_serpent(destination.x, destination.y, &mon->serpent);
+	if (retirer_queue) {
+		retirer_queue_serpent(&mon->serpent);
 	}
-	/* La tête est à la case destination */
-	mon->serpent.corps[0] = destination;
 
 	return 1;
 }
@@ -244,7 +297,7 @@ int manger_pomme_serpent(Monde *mon)
 	mon->nb_pommes_mangees++;
 
 	/* On déplace le serpent */
-	deplacer_serpent(mon);
+	deplacer_serpent(mon, 0);
 
 	/* On augmente la taille du serpent */
 	mon->serpent.taille++;
@@ -275,14 +328,16 @@ void afficher_pomme(Pomme *pom)
 
 void afficher_serpent(Serpent *ser)
 {
-	int i;
+	Case *c;
 
 	/* Disque noir pour le tête du serpent */
-	MLV_draw_filled_circle(ser->corps[0].y*TAILLE_CASE + TAILLE_CASE/2, ser->corps[0].x*TAILLE_CASE + TAILLE_CASE/2, TAILLE_CASE*0.4, MLV_COLOR_BLACK);
+	MLV_draw_filled_circle(ser->corps->y*TAILLE_CASE + TAILLE_CASE/2, ser->corps->x*TAILLE_CASE + TAILLE_CASE/2, TAILLE_CASE*0.4, MLV_COLOR_BLACK);
 
 	/* Carrés verts pour le corps */
-	for (i = 1; i < ser->taille; i++) {
-		MLV_draw_filled_rectangle(ser->corps[i].y*TAILLE_CASE + TAILLE_CASE*0.1, ser->corps[i].x*TAILLE_CASE + TAILLE_CASE*0.1, TAILLE_CASE*0.8, TAILLE_CASE*0.8, MLV_COLOR_GREEN);
+	c = ser->corps->suiv;
+	while (c != NULL) {
+		MLV_draw_filled_rectangle(c->y*TAILLE_CASE + TAILLE_CASE*0.1, c->x*TAILLE_CASE + TAILLE_CASE*0.1, TAILLE_CASE*0.8, TAILLE_CASE*0.8, MLV_COLOR_GREEN);
+		c = c->suiv;
 	}
 }
 
@@ -335,7 +390,7 @@ int main(int argc, char *argv[])
 			break;
 		}
 		/* On essaie de se déplacer sur une case vide */
-		if (!deplacer_serpent(&mon)) {
+		if (!deplacer_serpent(&mon, 1)) {
 			/* Sinon on essaie de manger une pomme */
 			if (manger_pomme_serpent(&mon)) {
 				/* SI on a mangé une pomme on en recréée une */
