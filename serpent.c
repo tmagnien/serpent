@@ -5,10 +5,6 @@
 
 #include "serpent.h"
 
-/* Amélioration #1 (*)    : barre d'espace pour mettre en pause */
-/* Amélioration #9 (***)  : liste chaînée de cases pour le serpent */
-/* Amélioration #10 (***) : fichier de coniguration */
-
 Pomme pomme_gen_alea(int n, int m)
 {
 	Pomme	pomme;

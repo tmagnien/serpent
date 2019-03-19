@@ -6,6 +6,10 @@
 #include "serpent.h"
 #include "affichage_serpent.h"
 
+/* Amélioration #1 (*)    : barre d'espace pour mettre en pause */
+/* Amélioration #9 (***)  : liste chaînée de cases pour le serpent */
+/* Amélioration #10 (***) : fichier de coniguration */
+
 int main(int argc, char *argv[])
 {
 	MLV_Keyboard_button touche;
