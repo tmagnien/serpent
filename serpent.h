@@ -1,6 +1,7 @@
 #define N 32
 #define M 64
 #define TAILLE_CASE 10
+#define DUREE_TOUR_MS 250
 
 typedef struct {
 	int x;

@@ -1,8 +1,11 @@
 #include <stdlib.h>
 #include <time.h>
+#include <sys/time.h>
 #include <MLV/MLV_all.h>
 
 #include "serpent.h"
+
+/* Amélioration #1 (*) : barre d'espace pour mettre en pause */
 
 Pomme pomme_gen_alea(int n, int m)
 {
@@ -302,7 +305,7 @@ void afficher_monde(Monde *mon)
 	}
 
 	/* Affichage score */
-	/* FIXME */
+	MLV_draw_text(TAILLE_CASE, TAILLE_CASE*(N+1), "Score: %d", MLV_COLOR_BLACK, mon->nb_pommes_mangees);
 
 	/* Actualiser l'affichage */
 	MLV_actualise_window();
@@ -310,11 +313,15 @@ void afficher_monde(Monde *mon)
 
 int main(int argc, char *argv[])
 {
+	MLV_Keyboard_button touche;
+	struct timeval debut, fin;
+	long delai;
+
 	/* Initialisation random */
 	srandom(time(NULL));
 
 	/* Initialisation graphique */
-	MLV_create_window("Serpent", "Serpent", TAILLE_CASE*M, TAILLE_CASE*N);
+	MLV_create_window("Serpent", "Serpent", TAILLE_CASE*M, TAILLE_CASE*(N+3));
 
 	Monde mon = init_monde(12);
 
@@ -337,21 +344,66 @@ int main(int argc, char *argv[])
 		}
 		/* On affiche le monde */
 		afficher_monde(&mon);
-		/* Détection touche pressée */
-		if (MLV_get_keyboard_state(MLV_KEYBOARD_a) == MLV_PRESSED) {
-			mon.serpent.direction = NORD;
+		/* Détection touche pressée ou délai atteint */
+		/* On récupère l'heure courante */
+		gettimeofday(&debut, NULL);
+		while (MLV_get_event(&touche, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) == MLV_NONE ||
+				touche != MLV_KEYBOARD_a ||
+				touche != MLV_KEYBOARD_p ||
+				touche != MLV_KEYBOARD_q ||
+				touche != MLV_KEYBOARD_o ||
+				touche != MLV_KEYBOARD_SPACE) {
+			/* On récupère l'heure courante */
+			gettimeofday(&fin, NULL);
+			delai = (fin.tv_sec*1000+fin.tv_usec/1000) - (debut.tv_sec*1000+debut.tv_usec/1000);
+			/* Délai atteint on sort de la boucle */
+			if (delai > DUREE_TOUR_MS) {
+				break;
+			}
 		}
-		else if (MLV_get_keyboard_state(MLV_KEYBOARD_p) == MLV_PRESSED) {
-			mon.serpent.direction = EST;
+
+		/* On ne prend pas en compte la 'marche arrière' */
+		switch (touche) {
+			case MLV_KEYBOARD_a:
+				if (mon.serpent.direction != SUD) {
+					mon.serpent.direction = NORD;
+				}
+				break;
+			case MLV_KEYBOARD_p:
+				if (mon.serpent.direction != OUEST) {
+					mon.serpent.direction = EST;
+				}
+				break;
+			case MLV_KEYBOARD_q:
+				if (mon.serpent.direction != NORD) {
+					mon.serpent.direction = SUD;
+				}
+				break;
+			case MLV_KEYBOARD_o:
+				if (mon.serpent.direction != EST) {
+					mon.serpent.direction = OUEST;
+				}
+				break;
+			case MLV_KEYBOARD_SPACE:
+				MLV_wait_keyboard(NULL, NULL, NULL);
+				break;
 		}
-		else if (MLV_get_keyboard_state(MLV_KEYBOARD_q) == MLV_PRESSED) {
-			mon.serpent.direction = SUD;
+		/* Si le délai n'a pas été atteint, on attend la fin du délai */
+		if (delai < DUREE_TOUR_MS) {
+			MLV_wait_milliseconds(DUREE_TOUR_MS - delai);
 		}
-		else if (MLV_get_keyboard_state(MLV_KEYBOARD_o) == MLV_PRESSED) {
-			mon.serpent.direction = OUEST;
-		}
-		MLV_wait_milliseconds(250);
 	}
+
+	/* Effacer la fenêtre */
+	MLV_clear_window(MLV_COLOR_WHITE);
+
+	/* Affiche la fin de partie avec le score */
+	MLV_draw_text(TAILLE_CASE, TAILLE_CASE*(N/2), "Partie terminée, score : %d", MLV_COLOR_RED, mon.nb_pommes_mangees);
+
+	/* Actualiser l'affichage */
+	MLV_actualise_window();
+
+	MLV_wait_keyboard(NULL, NULL, NULL);
 
 	return 0;
 }
