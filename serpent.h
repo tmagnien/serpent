@@ -1,6 +1,5 @@
 #define N 32
 #define M 64
-#define TAILLE_CASE 10
 #define DUREE_TOUR_MS 250
 #define NB_POMMES 12
 #define TAILLE_SERPENT 2
@@ -37,3 +36,12 @@ typedef struct {
 	int		nb_pommes_mangees;
 	Pomme		*pommes;
 } Monde;
+
+void lire_fichier_config(FILE *fp, int *largeur, int *hauteur, int *nombre_pommes, int *taille_serpent, int *duree_tour);
+
+Monde init_monde(int nb_pommes, int n, int m, int taille_serpent);
+int mort_serpent(Monde *mon);
+void ajouter_pomme_monde(Monde *mon);
+int deplacer_serpent(Monde *mon, int retirer_queue);
+int manger_pomme_serpent(Monde *mon);
+
