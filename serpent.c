@@ -1,12 +1,14 @@
 #include <stdlib.h>
 #include <time.h>
 #include <sys/time.h>
+#include <stdlib.h>
 #include <MLV/MLV_all.h>
 
 #include "serpent.h"
 
-/* Amélioration #1 (*)   : barre d'espace pour mettre en pause */
-/* Amélioration #9 (***) : liste chaînée de cases pour le serpent */
+/* Amélioration #1 (*)    : barre d'espace pour mettre en pause */
+/* Amélioration #9 (***)  : liste chaînée de cases pour le serpent */
+/* Amélioration #10 (***) : fichier de coniguration */
 
 Pomme pomme_gen_alea(int n, int m)
 {
@@ -18,22 +20,22 @@ Pomme pomme_gen_alea(int n, int m)
 	return pomme;
 }
 
-int case_est_hors_plateau(Case destination)
+int case_est_hors_plateau(Case destination, Monde *mon)
 {
 	/* La case destination est-elle en-dehors du plateau ? */
-	if (destination.x < 0 || destination.x > N || destination.y < 0 || destination.y > M) {
+	if (destination.x < 0 || destination.x > mon->n || destination.y < 0 || destination.y > mon->m) {
 		return 1;
 	}
 
 	return 0;
 }
 
-int case_appartient_serpent(Case destination, Serpent ser)
+int case_appartient_serpent(Case destination, Serpent ser, Monde *mon)
 {
 	Case *c;
 
 	/* La case destination est-elle dans le plateau */
-	if (case_est_hors_plateau(destination)) {
+	if (case_est_hors_plateau(destination, mon)) {
 		return 0;
 	}
 
@@ -51,18 +53,20 @@ int case_appartient_serpent(Case destination, Serpent ser)
 
 int case_est_pomme(Case destination, Monde *mon)
 {
-	int i;
+	Pomme *p;
 
 	/* La case destination est-elle dans le plateau */
-	if (case_est_hors_plateau(destination)) {
+	if (case_est_hors_plateau(destination, mon)) {
 		return 0;
 	}
 
 	/* La case destination contient-elle une pomme ? */
-	for (i = 0; i < mon->nb_pommes_monde; i++) {
-		if (destination.x == mon->pommes[i].c.x && destination.y == mon->pommes[i].c.y) {
+	p = mon->pommes;
+	while (p != NULL) {
+		if (destination.x == p->c.x && destination.y == p->c.y) {
 			return 1;
 		}
+		p = p->suiv;
 	}
 
 	return 0;
@@ -71,22 +75,26 @@ int case_est_pomme(Case destination, Monde *mon)
 int case_est_occupee(Case destination, Monde *mon)
 {
 	/* Une case est hors plateau ou contient un lmorceau du corps du serpent ou une pomme */
-	return (case_est_hors_plateau(destination) ||
-		case_appartient_serpent(destination, mon->serpent) ||
+	return (case_est_hors_plateau(destination, mon) ||
+		case_appartient_serpent(destination, mon->serpent, mon) ||
 		case_est_pomme(destination, mon));
 }
 
 void ajouter_pomme_monde(Monde *mon)
 {
-	Pomme	pomme;
+	Pomme	pomme, *p;
 
 	/* On génère une pomme tant qu'on ne peut pas la placer */
 	do {
-		pomme = pomme_gen_alea(N, M);
+		pomme = pomme_gen_alea(mon->n, mon->m);
 	} while (case_est_occupee(pomme.c, mon));
 
-	/* On peut placer la pomme */
-	mon->pommes[mon->nb_pommes_monde] = pomme;
+	/* On peut placer la pomme en tête, l'ordre n'importe pas */
+	p = malloc(sizeof(Pomme));
+	p->c.x = pomme.c.x;
+	p->c.y = pomme.c.y;
+	p->suiv = mon->pommes;
+	mon->pommes = p;
 
 	/* On incrémente le nombre de pommes du monde */
 	mon->nb_pommes_monde++;
@@ -94,25 +102,34 @@ void ajouter_pomme_monde(Monde *mon)
 
 void retirer_pomme_monde(Case c, Monde *mon)
 {
-	int i, j;
+	Pomme *p, *tmp;
 
-	/* On cherche l'index de la pomme */
-	for (i = 0; i < mon->nb_pommes_monde; i++) {
-		if (c.x == mon->pommes[i].c.x && c.y == mon->pommes[i].c.y) {
-			/* Trouve */
-			break;
-		}
-	}
+	/* On cherche la pomme */
+	p = mon->pommes;
 
-	/* Cas en principe impossible, on n'a pas trouvé la pomme */
-	if (i == mon->nb_pommes_monde) {
+	/* Pas de pommes, on ne fait rien */
+	if (p == NULL) {
 		return;
 	}
 
-	/* On décale les pommes après l'index */
-	for (j = i; j < mon->nb_pommes_monde - 1; j++) {
-		mon->pommes[j] = mon->pommes[j+1];
+	/* On parcourt les pommes */
+	while (p->suiv != NULL) {
+		if (c.x == p->suiv->c.x && c.y == p->suiv->c.y) {
+			/* Trouve */
+			break;
+		}
+		p = p->suiv;
 	}
+
+	/* Pas trouvé la pomme, on ne fait rien */
+	if (p->suiv == NULL) {
+		return;
+	}
+
+	/* On retire la pomme p->suiv */
+	tmp = p->suiv;
+	p->suiv = p->suiv->suiv;
+	free(tmp);
 
 	/* On décrémente le nombre de pommes du monde */
 	mon->nb_pommes_monde--;
@@ -165,46 +182,54 @@ void retirer_queue_serpent(Serpent *ser)
 	corps->suiv = NULL;
 }
 
-Serpent init_serpent()
+Serpent init_serpent(int taille_serpent, Monde mon)
 {
 	Serpent ser;
 	Case *c;
+	int i;
 
 	/* Nouveau serpent de deux cases, au milieu, direction est */
 	ser.direction = EST;
-	ser.taille = 2;
+	ser.taille = taille_serpent;
 	ser.corps = NULL;
 
 	/* Ajout de la tête */
-	ajouter_tete_serpent(N / 2, M / 2, &ser);
+	ajouter_tete_serpent(mon.n / 2, mon.m / 2, &ser);
 
 	/* Corps */
-	ajouter_queue_serpent(N / 2, (M / 2) - 1, &ser);
+	for (i = 1; i < ser.taille; i++) {
+		ajouter_queue_serpent(mon.n / 2, (mon.m / 2) - i, &ser);
+	}
 
 	/* On renvoie le serpent */
 	return ser;
 }
 
-Monde init_monde(int nb_pommes)
+Monde init_monde(int nb_pommes, int n, int m, int taille_serpent)
 {
 	int i;
 
-	Monde m;
+	Monde mon;
 
 	/* Un monde vide */
-	m.nb_pommes_mangees = 0;
-	m.nb_pommes_monde = 0;
+	mon.nb_pommes_mangees = 0;
+	mon.nb_pommes_monde = 0;
+	mon.pommes = NULL;
+
+	/* De taille NxM */
+	mon.n = n;
+	mon.m = m;
 
 	/* Un serpent */
-	m.serpent = init_serpent();
+	mon.serpent = init_serpent(taille_serpent, mon);
 
 	/* On ajoute les pommes */
 	for (i = 0; i < nb_pommes; i++) {
-		ajouter_pomme_monde(&m);
+		ajouter_pomme_monde(&mon);
 	}
 
 	/* On renvoie le monde */
-	return m;
+	return mon;
 }
 
 Case destination_serpent(Serpent ser)
@@ -272,7 +297,7 @@ int mort_serpent(Monde *mon)
 	destination = destination_serpent(mon->serpent);
 
 	/* Deux cas de mort possibles */
-	return (case_est_hors_plateau(destination) || case_appartient_serpent(destination, mon->serpent));
+	return (case_est_hors_plateau(destination, mon) || case_appartient_serpent(destination, mon->serpent, mon));
 }
 
 int manger_pomme_serpent(Monde *mon)
@@ -310,13 +335,13 @@ void afficher_quadrillage(Monde *mon)
 	int i;
 
 	/* On trace les lignes horizontales */
-	for (i = 0; i <= N; i++) {
-		MLV_draw_line(0, i*TAILLE_CASE, M*TAILLE_CASE, i*TAILLE_CASE, MLV_COLOR_BLACK);
+	for (i = 0; i <= mon->n; i++) {
+		MLV_draw_line(0, i*TAILLE_CASE, mon->m*TAILLE_CASE, i*TAILLE_CASE, MLV_COLOR_BLACK);
 	}
 
 	/* On trace les lignes verticales */
-	for (i = 0; i <= M; i++) {
-		MLV_draw_line(i*TAILLE_CASE, 0, i*TAILLE_CASE, N*TAILLE_CASE, MLV_COLOR_BLACK);
+	for (i = 0; i <= mon->m; i++) {
+		MLV_draw_line(i*TAILLE_CASE, 0, i*TAILLE_CASE, mon->n*TAILLE_CASE, MLV_COLOR_BLACK);
 	}
 }
 
@@ -343,7 +368,7 @@ void afficher_serpent(Serpent *ser)
 
 void afficher_monde(Monde *mon)
 {
-	int i;
+	Pomme *p;
 
 	/* Effacer la fenêtre */
 	MLV_clear_window(MLV_COLOR_WHITE);
@@ -355,8 +380,10 @@ void afficher_monde(Monde *mon)
 	afficher_serpent(&mon->serpent);
 
 	/* Affichage pommes */
-	for (i = 0; i < mon->nb_pommes_monde; i++) {
-		afficher_pomme(&mon->pommes[i]);
+	p = mon->pommes;
+	while (p != NULL) {
+		afficher_pomme(p);
+		p = p->suiv;
 	}
 
 	/* Affichage score */
@@ -366,19 +393,78 @@ void afficher_monde(Monde *mon)
 	MLV_actualise_window();
 }
 
+void lire_valeur(char *ligne, int *valeur)
+{
+	char *equal = strchr(ligne, '=');
+	if (equal == NULL) {
+		return;
+	}
+
+	while (equal != NULL && *equal != '\0' && !isdigit(*equal)) {
+		equal++;
+	}
+
+	if (equal != NULL && *equal != '\0') {
+		sscanf(equal, "%d", valeur);
+	}
+}
+
+void lire_fichier_config(FILE *fp, int *largeur, int *hauteur, int *nombre_pommes, int *taille_serpent, int *duree_tour)
+{
+	char ligne[80];
+	char cle[40];
+	char *equal;
+	int valeur;
+
+	/* On lit toutes les lignes du fichier */
+	while (fgets(ligne, 80, fp)) {
+		/* Paramètre à lire */
+		if (strncmp(ligne, "largeur", strlen("largeur")) == 0) {
+			lire_valeur(ligne, largeur);
+		}
+		else if (strncmp(ligne, "hauteur", strlen("hauteur")) == 0) {
+			lire_valeur(ligne, hauteur);
+		}
+		else if (strncmp(ligne, "nombre_pommes", strlen("nombre_pommes")) == 0) {
+			lire_valeur(ligne, nombre_pommes);
+		}
+		else if (strncmp(ligne, "taille_serpent", strlen("taille_serpent")) == 0) {
+			lire_valeur(ligne, taille_serpent);
+		}
+		else if (strncmp(ligne, "duree_tour", strlen("duree_tour")) == 0) {
+			lire_valeur(ligne, duree_tour);
+		}
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	MLV_Keyboard_button touche;
 	struct timeval debut, fin;
 	long delai;
+	FILE *fp;
+	int largeur, hauteur, nombre_pommes, taille_serpent, duree_tour;
 
 	/* Initialisation random */
 	srandom(time(NULL));
 
-	/* Initialisation graphique */
-	MLV_create_window("Serpent", "Serpent", TAILLE_CASE*M, TAILLE_CASE*(N+3));
+	/* Valeurs par défaut */
+	largeur = M;
+	hauteur = N;
+	nombre_pommes = NB_POMMES;
+	taille_serpent = TAILLE_SERPENT;
+	duree_tour = DUREE_TOUR_MS;
 
-	Monde mon = init_monde(12);
+	/* Fichier de configuration existant ? */
+	fp = fopen(FICHIER_CONFIG, "r");
+	if (fp != NULL) {
+		lire_fichier_config(fp, &largeur, &hauteur, &nombre_pommes, &taille_serpent, &duree_tour);
+	}
+
+	/* Initialisation graphique */
+	MLV_create_window("Serpent", "Serpent", TAILLE_CASE*largeur, TAILLE_CASE*(hauteur+3));
+
+	Monde mon = init_monde(nombre_pommes, hauteur, largeur, taille_serpent);
 
 	afficher_monde(&mon);
 
@@ -412,7 +498,7 @@ int main(int argc, char *argv[])
 			gettimeofday(&fin, NULL);
 			delai = (fin.tv_sec*1000+fin.tv_usec/1000) - (debut.tv_sec*1000+debut.tv_usec/1000);
 			/* Délai atteint on sort de la boucle */
-			if (delai > DUREE_TOUR_MS) {
+			if (delai > duree_tour) {
 				break;
 			}
 		}
@@ -444,8 +530,8 @@ int main(int argc, char *argv[])
 				break;
 		}
 		/* Si le délai n'a pas été atteint, on attend la fin du délai */
-		if (delai < DUREE_TOUR_MS) {
-			MLV_wait_milliseconds(DUREE_TOUR_MS - delai);
+		if (delai < duree_tour) {
+			MLV_wait_milliseconds(duree_tour - delai);
 		}
 	}
 
@@ -453,7 +539,7 @@ int main(int argc, char *argv[])
 	MLV_clear_window(MLV_COLOR_WHITE);
 
 	/* Affiche la fin de partie avec le score */
-	MLV_draw_text(TAILLE_CASE, TAILLE_CASE*(N/2), "Partie terminée, score : %d", MLV_COLOR_RED, mon.nb_pommes_mangees);
+	MLV_draw_text(TAILLE_CASE, TAILLE_CASE*(hauteur/2), "Partie terminée, score : %d", MLV_COLOR_RED, mon.nb_pommes_mangees);
 
 	/* Actualiser l'affichage */
 	MLV_actualise_window();

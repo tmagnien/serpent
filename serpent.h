@@ -2,6 +2,9 @@
 #define M 64
 #define TAILLE_CASE 10
 #define DUREE_TOUR_MS 250
+#define NB_POMMES 12
+#define TAILLE_SERPENT 2
+#define FICHIER_CONFIG "Serpent.ini"
 
 typedef struct Case {
 	int x;
@@ -22,13 +25,15 @@ typedef struct {
 	int		taille;
 } Serpent;
 
-typedef struct {
+typedef struct Pomme {
 	Case	c;
+	struct Pomme *suiv;
 } Pomme;
 
 typedef struct {
+	int		n, m;
 	Serpent		serpent;
-	Pomme		pommes[N*M];
 	int		nb_pommes_monde;
 	int		nb_pommes_mangees;
+	Pomme		*pommes;
 } Monde;
